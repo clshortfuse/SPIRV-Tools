@@ -138,7 +138,7 @@ jobs:
           merge-multiple: true
       - name: Publish release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.FORK_SYNC_TOKEN || github.token }}
           GH_REPO: ${{ github.repository }}
           UPSTREAM_SHA: ${{ needs.sync.outputs.upstream_sha }}
           VERSION: ${{ needs.sync.outputs.version }}

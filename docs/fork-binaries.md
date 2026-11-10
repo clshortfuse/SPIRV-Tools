@@ -31,6 +31,9 @@ automatically; this workflow will not create any more of them.
    classic token needs `repo` and `workflow`). Without it, the built-in token
    can sync ordinary changes but cannot push changes to workflow files.
    Branch rules must also allow the token to push to `main`.
+   Publishing uses this token too: creating a version tag at an upstream commit
+   that changes workflow files can be rejected with HTTP 403 when using only
+   the built-in Actions token, even with Contents write permission.
 3. Run the workflow manually from Actions for the initial release. Later runs
    are scheduled; GitHub may delay scheduled runs or disable them after
    repository inactivity. A workflow-file push also triggers a run.
