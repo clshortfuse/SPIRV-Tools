@@ -23,7 +23,8 @@ jobs:
     permissions:
       contents: write
     outputs:
-      upstream_sha: ${{ steps.sync.outputs.upstream_sha }}
+      upstream_sha: ${{ steps.release.outputs.upstream_sha }}
+      version: ${{ steps.release.outputs.version }}
       build: ${{ steps.release.outputs.build }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -44,17 +45,23 @@ jobs:
           git merge --no-edit "$upstream_sha"
           git push origin HEAD:main
           echo "upstream_sha=$upstream_sha" >> "$GITHUB_OUTPUT"
-      - name: Check for an existing published build
+      - name: Select latest numbered upstream release
         id: release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          UPSTREAM_SHA: ${{ steps.sync.outputs.upstream_sha }}
         shell: bash
         run: |
           set -euo pipefail
+          upstream_releases=$(gh release list --repo KhronosGroup/SPIRV-Tools --exclude-drafts --exclude-pre-releases --limit 1000 --json tagName)
+          version=$(jq -r '.[].tagName | select(test("^v[0-9]{4}\\.[0-9]+$"))' <<< "$upstream_releases" | sort -V | tail -n 1)
+          test -n "$version"
+          git fetch --no-tags upstream "+refs/tags/$version:refs/upstream-tags/$version"
+          upstream_sha=$(git rev-parse "refs/upstream-tags/$version^{commit}")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "upstream_sha=$upstream_sha" >> "$GITHUB_OUTPUT"
           releases=$(gh release list --limit 1000 --json tagName,isDraft)
-          if jq -e --arg tag "build-$UPSTREAM_SHA" '.[] | select(.tagName == $tag and .isDraft == false)' <<< "$releases" > /dev/null; then
+          if jq -e --arg tag "$version" '.[] | select(.tagName == $tag and .isDraft == false)' <<< "$releases" > /dev/null; then
             echo 'build=false' >> "$GITHUB_OUTPUT"
           else
             echo 'build=true' >> "$GITHUB_OUTPUT"
@@ -77,7 +84,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          repository: KhronosGroup/SPIRV-Tools
           ref: ${{ needs.sync.outputs.upstream_sha }}
+          fetch-depth: 0
           persist-credentials: false
       - name: Fetch upstream-pinned headers
         run: python utils/git-sync-deps --prefix external/spirv-headers
@@ -102,13 +111,14 @@ jobs:
         shell: bash
         env:
           UPSTREAM_SHA: ${{ needs.sync.outputs.upstream_sha }}
+          VERSION: ${{ needs.sync.outputs.version }}
           PLATFORM: ${{ matrix.platform }}
         run: |
           set -euo pipefail
           package/bin/spirv-val --version
           package/bin/spirv-opt --version
           cp LICENSE package/LICENSE
-          printf 'Unofficial build\nUpstream: https://github.com/KhronosGroup/SPIRV-Tools/commit/%s\nPlatform: %s\n' "$UPSTREAM_SHA" "$PLATFORM" > package/BUILD-INFO.txt
+          printf 'Unofficial build\nVersion: %s\nUpstream: https://github.com/KhronosGroup/SPIRV-Tools/commit/%s\nPlatform: %s\n' "$VERSION" "$UPSTREAM_SHA" "$PLATFORM" > package/BUILD-INFO.txt
           cmake -E tar cf "SPIRV-Tools-$PLATFORM.zip" --format=zip -- package
       - uses: actions/upload-artifact@v4
         with:
@@ -131,15 +141,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           UPSTREAM_SHA: ${{ needs.sync.outputs.upstream_sha }}
+          VERSION: ${{ needs.sync.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
-          tag="build-$UPSTREAM_SHA"
+          tag="$VERSION"
           for platform in windows-x64 linux-x64 macos-x64; do
             test -f "SPIRV-Tools-$platform.zip"
           done
           if ! gh release view "$tag" > /dev/null 2>&1; then
-            gh release create "$tag" --target "$UPSTREAM_SHA" --draft --title "Upstream main $UPSTREAM_SHA" --notes "Unofficial automated Release builds of upstream commit https://github.com/KhronosGroup/SPIRV-Tools/commit/$UPSTREAM_SHA. These are not official Khronos or Vulkan SDK releases."
+            gh release create "$tag" --target "$UPSTREAM_SHA" --draft --title "SPIRV-Tools $VERSION" --notes "Unofficial binaries for upstream numbered release $VERSION: https://github.com/KhronosGroup/SPIRV-Tools/tree/$VERSION (commit $UPSTREAM_SHA). These are not official Khronos or Vulkan SDK binaries."
           fi
           gh release upload "$tag" SPIRV-Tools-*.zip --clobber
           gh release edit "$tag" --draft=false --latest

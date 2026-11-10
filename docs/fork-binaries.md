@@ -1,13 +1,24 @@
 # Unofficial fork builds
 
 This fork's `Fork upstream sync and binaries` GitHub Actions workflow checks
-KhronosGroup/SPIRV-Tools `main` every six hours. It merges upstream into the
-fork's `main` without force-pushing, and builds the exact upstream commit (not
-fork-specific changes). A successful build publishes a GitHub release tagged
-`build-<full upstream commit>` with Windows x64, Linux x64, and macOS Intel x64
+KhronosGroup/SPIRV-Tools every six hours. It merges upstream `main` into the
+fork's `main` without force-pushing. Independently, it queries upstream GitHub
+Releases and selects the highest numbered published, non-prerelease version
+matching `v<year>.<number>`, then builds that exact tagged
+commit, not upstream HEAD or fork-specific changes. A successful build publishes
+a GitHub release with the same version tag, with Windows x64, Linux x64, and macOS Intel x64
 ZIPs. Each ZIP contains the CMake install tree, license, and build provenance.
-These are unofficial development builds, not Vulkan SDK releases. Tests are
+These are unofficial binaries of numbered releases, not Vulkan SDK binaries. Tests are
 disabled; the workflow smoke-tests the validator and optimizer.
+
+The first run builds the latest stable numbered version (currently `v2026.4`),
+not every historical release. Subsequent runs publish only when the latest numbered
+version has no published fork release. Ordinary upstream commits, release
+candidates (`.rc*`), development tags, unpublished tags, draft releases,
+prereleases, and Vulkan SDK tags do not trigger binary
+releases. Fork source syncing continues even when no new version is available.
+Old `build-<commit>` releases created by the previous workflow are not removed
+automatically; this workflow will not create any more of them.
 
 ## Setup
 
